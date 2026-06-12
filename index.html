@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <title>Algoritma Analizi - Dağıtık Yük Dengeleme Simülasyonu</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f4f6f9;
+            color: #333;
+            margin: 0;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+        h1, h2 {
+            color: #2c3e50;
+            border-bottom: 2px solid #ecf0f1;
+            padding-bottom: 10px;
+        }
+        .btn {
+            background-color: #3498db;
+            color: white;
+            border: none;
+            padding: 12px 20px;
+            font-size: 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background 0.3s;
+            margin-right: 10px;
+            margin-bottom: 10px;
+        }
+        .btn:hover { background-color: #2980b9; }
+        .btn-danger { background-color: #e74c3c; }
+        .btn-danger:hover { background-color: #c0392b; }
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }
+        .stat-card {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            padding: 15px;
+            border-radius: 6px;
+            text-align: center;
+        }
+        .stat-card h3 { margin: 0 0 10px 0; font-size: 14px; color: #7f8c8d; }
+        .stat-card p { margin: 0; font-size: 18px; font-weight: bold; color: #2c3e50; }
+        .log-box {
+            background: #2c3e50;
+            color: #1abc9c;
+            padding: 15px;
+            border-radius: 6px;
+            height: 150px;
+            overflow-y: auto;
+            font-family: monospace;
+            margin-top: 20px;
+        }
+        .matrix-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        .matrix-table th, .matrix-table td {
+            border: 1px solid #dee2e6;
+            padding: 10px;
+            text-align: left;
+        }
+        .matrix-table th { background-color: #e9ecef; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>Student 24: Distributed Load Balancing Simülatörü</h1>
+    <p><strong>Makale:</strong> Karger, D., et al. (1997) - Consistent Hashing</p>
+    
+    <div>
+        <button class="btn" id="btnKur">1. Sistemi Başlat (5 Sunucu Ekle)</button>
+        <button class="btn" id="btnDagit">2. 100,000 Anahtar Dağıt</button>
+        <button class="btn btn-danger" id="btnDusur">3. Rastgele Bir Sunucu Çökert (Simüle Et)</button>
+    </div>
+
+    <div class="stats-grid" id="sunucuListesi">
+        </div>
+
+    <h2>Simülasyon Raporu ve Metrikler</h2>
+    <div class="stats-grid">
+        <div class="stat-card">
+            <h3>Toplam Anahtar</h3>
+            <p id="txtTotalKeys">0</p>
+        </div>
+        <div class="stat-card">
+            <h3>Halkadaki Nokta Sayısı</h3>
+            <p id="txtRingPoints">0</p>
+        </div>
+        <div class="stat-card">
+            <h3>Yeri Değişen Anahtar</h3>
+            <p id="txtRemappedKeys">-</p>
+        </div>
+        <div class="stat-card">
+            <h3>Teorik Oran (K/n)</h3>
+            <p id="txtTeorikOran">-</p>
+        </div>
+    </div>
+
+    <table class="matrix-table" id="sonucTablosu" style="display:none;">
+        <thead>
+            <tr>
+                <th>Sunucu Adı</th>
+                <th>Çökme Öncesi Yük</th>
+                <th>Çökme Sonrası Yük</th>
+                <th>Değişim Durumu</th>
+            </tr>
+        </thead>
+        <tbody id="tabloGövde"></tbody>
+    </table>
+
+    <div class="log-box" id="logKonsol">> Sistem hazır. Lütfen 'Sistemi Başlat' butonuna basın...</div>
+</div>
+
+<script>
+    // Dağılımı mükemmel yapan 32-bit FNV-1a Hash Algoritması
+    function basitHash(str) {
+        var hash = 2166136261;
+        for (var i = 0; i < str.length; i++) {
+            hash ^= str.charCodeAt(i);
+            hash += (hash << 1) + (hash << 4) + (hash << 7) + (hash << 8) + (hash << 24);
+        }
+        return Math.abs(hash >>> 0);
+    }
+
+    var sunucular = ["Server_1", "Server_2", "Server_3", "Server_4", "Server_5"];
+    var hashRing = []; 
+    var anahtarHaritasi = {}; 
+    var ilkDagilim = {}; 
+    var sistemKuruldu = false;
+    var veriDagitildi = false;
+
+    function logYaz(mesaj) {
+        var konsol = document.getElementById("logKonsol");
+        konsol.innerHTML += "<br>> " + mesaj;
+        konsol.scrollTop = konsol.scrollHeight;
+    }
+
+    function ilkKartlariCiz() {
+        var liste = document.getElementById("sunucuListesi");
+        liste.innerHTML = "";
+        for (var i = 0; i < sunucular.length; i++) {
+            liste.innerHTML += '<div class="stat-card" id="card_' + sunucular[i] + '">' +
+                '<h3>' + sunucular[i] + '</h3>' +
+                '<p id="val_' + sunucular[i] + '">0 veri</p>' +
+                '</div>';
+        }
+    }
+
+    function sistemiKur() {
+        hashRing = [];
+        anahtarHaritasi = {};
+        ilkDagilim = {};
+        veriDagitildi = false;
+        
+        document.getElementById("sonucTablosu").style.display = "none";
+        document.getElementById("txtTotalKeys").innerText = "0";
+        document.getElementById("txtRemappedKeys").innerText = "-";
+        document.getElementById("txtTeorikOran").innerText = "-";
+
+        // Yükün dengeli dağılması için sanal düğüm (virtual node) sayısını 16 yaptık (Halkada 80 nokta olacak)
+        for (var i = 0; i < sunucular.length; i++) {
+            var srv = sunucular[i];
+            ilkDagilim[srv] = 0; 
+            for (var j = 0; j < 16; j++) { 
+                var sanalAd = srv + "-vnode-" + j;
+                var h = basitHash(sanalAd);
+                hashRing.push({ hashValue: h, serverName: srv });
+            }
+        }
+
+        hashRing.sort(function(a, b) {
+            return a.hashValue - b.hashValue;
+        });
+
+        document.getElementById("txtRingPoints").innerText = hashRing.length;
+        ilkKartlariCiz();
+        logYaz("5 Sunucu (Halkada 80 sanal nokta ile) Hash Ring'e yerleştirildi ve sıralandı.");
+        sistemKuruldu = true;
+    }
+
+    function sunucuBul(key) {
+        var keyHash = basitHash(key);
+        var bas = 0;
+        var son = hashRing.length - 1;
+        
+        if (keyHash > hashRing[son].hashValue) {
+            return hashRing[0].serverName;
+        }
+
+        var sonucIndeks = 0;
+        while (bas <= son) {
+            var orta = Math.floor((bas + son) / 2);
+            if (hashRing[orta].hashValue >= keyHash) {
+                sonucIndeks = orta; 
+                son = orta - 1;
+            } else {
+                bas = orta + 1;
+            }
+        }
+        return hashRing[sonucIndeks].serverName;
+    }
+
+    function verileriDagit() {
+        if (!sistemKuruldu) {
+            alert("Önce sistemi başlatmalısınız!");
+            return;
+        }
+        
+        anahtarHaritasi = {};
+        for (var s = 0; s < sunucular.length; s++) {
+            ilkDagilim[sunucular[s]] = 0;
+        }
+
+        logYaz("100,000 anahtar halkaya dengeli şekilde dağıtılıyor...");
+
+        for (var i = 0; i < 100000; i++) {
+            var benzersizKey = "session_id_hash_key_index_" + i;
+            var atananSunucu = sunucuBul(benzersizKey);
+            anahtarHaritasi[benzersizKey] = atananSunucu;
+            ilkDagilim[atananSunucu]++;
+        }
+
+        document.getElementById("txtTotalKeys").innerText = "100.000";
+        
+        for (var k = 0; k < sunucular.length; k++) {
+            var sName = sunucular[k];
+            document.getElementById("val_" + sName).innerText = ilkDagilim[sName].toLocaleString() + " veri";
+        }
+
+        logYaz("Dağıtım tamamlandı. Yük dağılımı başarıyla optimize edildi.");
+        veriDagitildi = true;
+    }
+
+    function sunucuDusur() {
+        if (!veriDagitildi) {
+            alert("Önce verileri dağıtmalısınız!");
+            return;
+        }
+
+        var canliSunucular = [];
+        for (var i = 0; i < hashRing.length; i++) {
+            if (canliSunucular.indexOf(hashRing[i].serverName) === -1) {
+                canliSunucular.push(hashRing[i].serverName);
+            }
+        }
+
+        if (canliSunucular.length <= 1) {
+            alert("Daha fazla sunucu çökertilemez!");
+            return;
+        }
+        
+        var cokenSunucu = canliSunucular[Math.floor(Math.random() * canliSunucular.length)];
+        logYaz("KRİTİK DURUM: " + cokenSunucu + " çöktü! Yük devretme (Failover) başlatıldı...");
+
+        var yeniHalka = [];
+        for (var k = 0; k < hashRing.length; k++) {
+            if (hashRing[k].serverName !== cokenSunucu) {
+                yeniHalka.push(hashRing[k]);
+            }
+        }
+        hashRing = yeniHalka;
+        document.getElementById("txtRingPoints").innerText = hashRing.length;
+
+        var yeniCounts = {};
+        for (var m = 0; m < sunucular.length; m++) {
+            yeniCounts[sunucular[m]] = 0;
+        }
+
+        var yeriDegisenAnahtarSayisi = 0;
+
+        for (var key in anahtarHaritasi) {
+            var eskiSunucu = anahtarHaritasi[key];
+            var yeniSunucu = sunucuBul(key);
+            
+            if (eskiSunucu !== yeniSunucu) {
+                yeriDegisenAnahtarSayisi++;
+            }
+            yeniCounts[yeniSunucu]++;
+        }
+
+        document.getElementById("txtRemappedKeys").innerText = yeriDegisenAnahtarSayisi.toLocaleString();
+        var teorikYuk = 100000 / 5; 
+        document.getElementById("txtTeorikOran").innerText = "~" + teorikYuk.toLocaleString() + " anahtar";
+
+        logYaz("Yeniden haritalama bitti. Taşınan veri sayısı: " + yeriDegisenAnahtarSayisi);
+
+        for (var x = 0; x < sunucular.length; x++) {
+            var s = sunucular[x];
+            var card = document.getElementById("card_" + s);
+            var valText = document.getElementById("val_" + s);
+            
+            if (s === cokenSunucu) {
+                card.style.borderColor = "#e74c3c";
+                card.style.background = "#fdf2f2";
+                card.getElementsByTagName("h3")[0].style.color = "#e74c3c";
+                card.getElementsByTagName("h3")[0].innerText = s + " (ÇÖKTÜ)";
+                valText.innerText = "0 veri";
+            } else {
+                card.style.borderColor = "#dee2e6";
+                card.style.background = "#f8f9fa";
+                card.getElementsByTagName("h3")[0].style.color = "#2c3e50";
+                card.getElementsByTagName("h3")[0].innerText = s;
+                valText.innerText = yeniCounts[s].toLocaleString() + " veri";
+            }
+        }
+
+        document.getElementById("sonucTablosu").style.display = "table";
+        var tbody = document.getElementById("tabloGövde");
+        tbody.innerHTML = "";
+
+        for (var i = 0; i < sunucular.length; i++) {
+            var sName = sunucular[i];
+            var eski = ilkDagilim[sName] || 0;
+            var yeni = yeniCounts[sName] || 0;
+            var durum = "";
+            
+            if (sName === cokenSunucu) {
+                durum = "<span style='color:red; font-weight:bold;'>Düştü (Yük Devredildi)</span>";
+            } else if (yeni > eski) {
+                durum = "<span style='color:green;'>+" + (yeni - eski).toLocaleString() + " Anahtar Aldı</span>";
+            } else {
+                durum = "Değişmedi (Veri Korundu)";
+            }
+
+            tbody.innerHTML += "<tr>" +
+                "<td><strong>" + sName + "</strong></td>" +
+                "<td>" + eski.toLocaleString() + "</td>" +
+                "<td>" + yeni.toLocaleString() + "</td>" +
+                "<td>" + durum + "</td>" +
+                "</tr>";
+        }
+    }
+
+    window.onload = function() {
+        document.getElementById("btnKur").addEventListener("click", sistemiKur);
+        document.getElementById("btnDagit").addEventListener("click", verileriDagit);
+        document.getElementById("btnDusur").addEventListener("click", sunucuDusur);
+    };
+</script>
+</body>
+</html>
