@@ -29,8 +29,8 @@ Bu projede, Redis Cluster veya Memcached gibi büyük dağıtık mimarilerin ark
 
 ---
 
-## 🛠️ Kodlama ve Geliştirme Süreci (Yapay Zeka Beyanı)
-Bu projenin geliştirilmesi sürecinde, modern mühendislik pratiklerine uygun olarak **Gemini AI** modelinden aktif destek alınmıştır. Yapay zeka araçları projede şu aşamalarda kullanılmıştır:
+## 🛠️ Kodlama ve Geliştirme Süreci
+Bu projenin geliştirilmesi sürecinde, modern mühendislik pratiklerine uygun olarak birçok yapay zeka modelinden aktif destek alınmıştır. Yapay zeka araçları projede şu aşamalarda kullanılmıştır:
 * **Algoritma Kurulumu:** JavaScript mimarisinde veri dağılımını optimize eden *32-bit FNV-1a* hash fonksiyonunun koda entegre edilmesi ve arama hızını $O(\log n)$'e düşüren *Binary Search* mantığının hatasız şekilde kurulması adımlarında kodlama desteği alınmıştır.
 * **Arayüz ve Kararlılık:** Tarayıcıların yerel güvenlik politikalarına takılmayan saf JavaScript olay dinleyicilerinin (Event Listeners) kurgulanması ve CSS arayüz tasarımlarının prototiplenmesi AI yardımıyla sağlanmıştır.
 * **Raporlama:** Elde edilen ampirik test sonuçlarının ve metrik verilerinin akademik dökümantasyon standartlarına uygun olarak raporlanmasında optimizasyon amaçlı kullanılmıştır.
